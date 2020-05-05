@@ -1,0 +1,8 @@
+﻿CREATE TABLE [dbo].[Product]
+(
+	[Id] BIGINT NOT NULL PRIMARY KEY,
+	[Name] NVARCHAR(50) NOT NULL,
+	[Price] MONEY NOT NULL,
+	[Stock] INT NOT NULL,
+	[TimeStamp] DATETIMEOFFSET NOT NULL DEFAULT sysdatetimeoffset()
+)

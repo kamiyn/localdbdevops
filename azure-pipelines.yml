@@ -1,0 +1,83 @@
+﻿# ASP.NET
+# Build and test ASP.NET projects.
+# Add steps that publish symbols, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/apps/aspnet/build-aspnet-4
+
+name: 1.0$(Rev:.r)
+
+trigger:
+- localdbdevops
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  solution: 'src\LocalDbDevops\LocalDbDevops.sln'
+  dbproject: 'src\LocalDbDevops\LocalDbDevops.Db\LocalDbDevops.Db.sqlproj'
+  dacpacfile: 'LocalDbDevops.Db.dacpac'
+  dbname: 'LocalDbDevops'
+  testproject: 'src\LocalDbDevops\LocalDbDevops.Test\LocalDbDevops.Test.csproj'
+  buildConfiguration: 'Release'
+
+stages:
+- stage: Build
+  jobs:
+  - job: Build
+    steps:
+# Microsoft-hosted agents usually not need updating NuGetTool
+#    - task: NuGetToolInstaller@1
+
+    - task: PowerShell@2
+      displayName: 'start mssqllocaldb'
+      inputs:
+        targetType: 'inline'
+        script: 'sqllocaldb start mssqllocaldb'
+  
+    - task: VSBuild@1
+      displayName: 'build database project'
+      inputs:
+        solution: '$(dbproject)'
+        msbuildArgs: '/p:OutDir=$(Build.ArtifactStagingDirectory)'
+        configuration: '$(buildConfiguration)'
+
+    - task: SqlDacpacDeploymentOnMachineGroup@0
+      displayName: 'create database for test'
+      inputs:
+        taskType: 'sqlInline'
+        serverName: '(localdb)\mssqllocaldb'
+        databaseName: 'master'
+        authScheme: 'windowsAuthentication'
+        inlineSql: 'CREATE DATABASE $(dbname)'
+
+    - task: SqlDacpacDeploymentOnMachineGroup@0
+      displayName: 'publish database for test with DACPAC'
+      inputs:
+        taskType: 'dacpac'
+        targetMethod: 'server'
+        serverName: '(localdb)\mssqllocaldb'
+        databaseName: '$(dbname)'
+        authScheme: 'windowsAuthentication'
+        dacpacFile: '$(Build.ArtifactStagingDirectory)/$(dacpacfile)'
+
+    - task: NuGetCommand@2
+      displayName: 'nuget restore'
+      inputs:
+        restoreSolution: '$(solution)'
+
+    - task: DotNetCoreCLI@2
+      displayName: 'dotnet core TEST'
+      inputs:
+        command: test
+        projects: '$(testproject)'
+        arguments: '--configuration $(buildConfiguration) --collect "Code coverage"'
+
+    - task: DotNetCoreCLI@2
+      displayName: 'dotnet core PUBLISH'
+      inputs:
+        command: publish
+        publishWebProjects: True
+        arguments: '--configuration $(BuildConfiguration) --output $(Build.ArtifactStagingDirectory)'
+        zipAfterPublish: True
+
+    - publish: $(Build.ArtifactStagingDirectory)
+      artifact: WebApp
